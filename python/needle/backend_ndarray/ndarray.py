@@ -28,6 +28,9 @@ class BackendDevice:
         return self.name + "()"
 
     def __getattr__(self, name: str) -> Any:
+        """
+        把所有未知的属性访问都代理到底层的 C++/CUDA 模块上。
+        """
         return getattr(self.mod, name)
 
     def enabled(self) -> bool:
@@ -388,6 +391,9 @@ class NDArray:
             idxs = (idxs,)
         slices = tuple(
             [
+                # 真正的张量库  rank reduction via integer indexing
+                # 整数 = 选一个元素 → 降维（退化） slice = 选一个范围 → 保持维度
+                # Needle框架简化了处理: 把整数 s 统一转成 slice(s, s+1, 1)，所以维度不会真正消失，只是变成 size=1
                 self.process_slice(s, i) if isinstance(s, slice) else slice(s, s + 1, 1)
                 for i, s in enumerate(idxs)
             ]
@@ -685,3 +691,11 @@ def sum(a: NDArray, axis: int | tuple[int] | list[int] | None = None, keepdims: 
 
 def flip(a: NDArray, axes: tuple[int, ...]) -> NDArray:
     return a.flip(axes)
+
+def matmul(a: NDArray, b: NDArray):
+    return a @ b
+
+def power(a: NDArray, b: float):
+    return a**b
+
+pow = power

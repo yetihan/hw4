@@ -18,8 +18,7 @@ TENSOR_COUNTER = 0
 # NOTE: we will import numpy as the array_api
 # as the backend for our computations, this line will change in later homeworks
 
-import numpy as array_api
-NDArray = numpy.ndarray
+from .backend_selection import array_api, NDArray
 
 
 class Op:
@@ -361,6 +360,9 @@ class Tensor(Value):
 
     def transpose(self, axes=None):
         return needle.ops.Transpose(axes)(self)
+
+    def __rsub__(self, other):
+        return needle.ops.AddScalar(other)(needle.ops.Negate()(self))
 
     __radd__ = __add__
     __rmul__ = __mul__
