@@ -30,7 +30,7 @@ class Dataset:
         return x
 
 
-class DataLoader:
+class DataLoader_yeild:
     r"""
     Data loader. Combines a dataset and a sampler, and provides an iterable over
     the given dataset.
@@ -53,19 +53,77 @@ class DataLoader:
 
         self.dataset = dataset
         self.shuffle = shuffle
-        self.batch_size = batch_size
-        if not self.shuffle:
-            self.ordering = np.array_split(np.arange(len(dataset)), 
-                                           range(batch_size, len(dataset), batch_size))
+        self.batch_size = batch_size if batch_size else 1
+        self.ordering = np.array_split(np.arange(len(dataset)), 
+                                           range(self.batch_size, len(dataset), self.batch_size))
 
     def __iter__(self):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        if self.shuffle:
+            # self.__init__(self.dataset, self.batch_size, self.shuffle)
+            idx_array = np.arange(len(self.dataset)) 
+            np.random.shuffle(idx_array)
+            self.ordering = idx_array.reshape(-1, self.batch_size)
+        for batch_indices in self.ordering:
+            data = self.dataset[batch_indices] # type: ignore
+            yield tuple(Tensor(x) for x in data)
+        ### END YOUR SOLUTION
+
+    # def __next__(self):
+    #     ### BEGIN YOUR SOLUTION
+    #     for batch in self.ordering:
+    #         yield self.dataset[batch]
+        ### END YOUR SOLUTION
+
+
+class DataLoader_next:
+    r"""
+    Data loader. Combines a dataset and a sampler, and provides an iterable over
+    the given dataset.
+    Args:
+        dataset (Dataset): dataset from which to load the data.
+        batch_size (int, optional): how many samples per batch to load
+            (default: ``1``).
+        shuffle (bool, optional): set to ``True`` to have the data reshuffled
+            at every epoch (default: ``False``).
+     """
+    dataset: Dataset
+    batch_size:  Optional[int]
+
+    def __init__(
+        self,
+        dataset: Dataset,
+        batch_size: Optional[int] = 1,
+        shuffle: bool = False,
+    ):
+
+        self.dataset = dataset
+        self.shuffle = shuffle
+        self.batch_size = batch_size if batch_size else 1
+        if not shuffle:
+            self.ordering = np.array_split(np.arange(len(dataset)), 
+                                            range(self.batch_size, len(dataset), self.batch_size))
+
+    def __iter__(self):
+        ### BEGIN YOUR SOLUTION
+        if self.shuffle:
+            idx_array = np.arange(len(self.dataset)) 
+            np.random.shuffle(idx_array)
+            self.ordering = idx_array.reshape(-1, self.batch_size)
+        self.offset = 0
         ### END YOUR SOLUTION
         return self
 
     def __next__(self):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        if self.offset < len(self.ordering):
+            batch_indices = self.ordering[self.offset]
+            self.offset += 1
+            data = self.dataset[batch_indices] # type: ignore
+            return tuple(Tensor(x) for x in data)
+        else:
+            raise StopIteration
+        ## END YOUR SOLUTION
 
+
+DataLoader = DataLoader_yeild
