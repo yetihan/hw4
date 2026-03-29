@@ -19,7 +19,6 @@ if TYPE_CHECKING:
     NDArray: TypeAlias = array_api.NDArray
 
 def _logsumexp(Z, axes: Optional[tuple] = None, keepdims=False):
-    Z_max = Z.max(axes)
     if axes is None:
         view_shape = tuple(1 for _ in range(len(Z.shape)))
     else:
@@ -28,26 +27,11 @@ def _logsumexp(Z, axes: Optional[tuple] = None, keepdims=False):
         ndim = len(Z.shape)
         axes = tuple(dim if dim>=0 else dim + ndim for dim in axes)
         view_shape = tuple(1 if i in axes else dim for i,dim in enumerate(Z.shape))
+    Z_max = Z.max(axes)
     lse = Z_max + array_api.log(array_api.sum(array_api.exp(Z-Z_max.reshape(view_shape).broadcast_to(Z.shape)), axis=axes))
     if keepdims:
         return lse.reshape(view_shape)
     return lse   
-
-
-# def _logsumexp(Z, axes: Optional[tuple] = None, keepdims=False):
-#     Z_max = Z.max(axes, keepdims=True) # (b, n) -> (b,1)
-#     if axes is None:
-#         view_shape = (1,)
-#     else:
-#         if isinstance(axes, int):
-#             axes = (axes,)
-#         ndim = len(Z.shape)
-#         axes = tuple(dim if dim>=0 else dim + ndim for dim in axes)
-#         view_shape = tuple(dim for i,dim in enumerate(Z.shape) if i not in axes )
-#     lse = Z_max.reshape(view_shape) + array_api.log(array_api.sum(array_api.exp(Z-Z_max.broadcast_to(Z.shape)), axis=axes))
-#     if keepdims:
-#         return lse.reshape(view_shape)
-#     return lse 
 
 
 class LogSumExp(TensorOp):
@@ -63,7 +47,12 @@ class LogSumExp(TensorOp):
 
     def gradient(self, out_grad: Tensor, node: Tensor):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        Z = node.inputs[0]
+        if TYPE_CHECKING:
+            Z = cast(Tensor, Z)
+        lse = expand_reduced(node, self.axes, Z.shape) 
+        out_grad = expand_reduced(out_grad, self.axes, Z.shape)
+        return out_grad * exp(Z-lse)
         ### END YOUR SOLUTION
 
 
@@ -73,14 +62,19 @@ def logsumexp(a: Tensor, axes: Optional[tuple] = None) -> Tensor:
 class LogSoftmax(TensorOp):
     def compute(self, Z: NDArray) -> NDArray:
         ### BEGIN YOUR SOLUTION
-        axes = (len(Z.shape)-1,)
+        axes = (-1,)
         lse = _logsumexp(Z, axes, keepdims=True)
         return Z -lse.broadcast_to(Z.shape)
         ### END YOUR SOLUTION
 
     def gradient(self, out_grad: Tensor, node: Tensor):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        Z = node.inputs[0]
+        if TYPE_CHECKING:
+            Z = cast(Tensor, Z)
+        softmax = exp(node)
+        out_grad_sum = expand_reduced(out_grad.sum((-1,)), (-1,), Z.shape)
+        return out_grad - out_grad_sum * softmax
         ### END YOUR SOLUTION
 
 

@@ -19,6 +19,17 @@ if TYPE_CHECKING:
     from .. import backend_ndarray as array_api
     NDArray: TypeAlias = array_api.NDArray
 
+def expand_reduced(x, axes, original_shape):
+    """把沿 axes reduce 后的结果恢复到 original_shape（先 unsqueeze 再 broadcast）"""
+    ndim = len(original_shape)
+    if axes is None:
+        view_shape = tuple(1 for _ in range(ndim))
+    else:
+        if isinstance(axes, int):
+            axes = (axes,)
+        axes = tuple(ax if ax >= 0 else ax + ndim for ax in axes)
+        view_shape = tuple(1 if i in axes else s for i, s in enumerate(original_shape))
+    return broadcast_to(reshape(x, view_shape), original_shape)
 
 class EWiseAdd(TensorOp):
     def compute(self, a: NDArray, b: NDArray):
@@ -175,13 +186,13 @@ class Transpose(TensorOp):
         x, y = self.axes
         axes[x],axes[y] = axes[y], axes[x]
         if TYPE_CHECKING:
-            a = cast(array_api.NDArray, a)
+            a = cast(Tensor, a)
         return a.permute(tuple(axes))
         ### END YOUR SOLUTION
 
     def gradient(self, out_grad, node):
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        ### BEGIN YOUR SOLUTION         
+        return transpose(out_grad, axes=self.axes)
         ### END YOUR SOLUTION
 
 
@@ -203,8 +214,7 @@ class Reshape(TensorOp):
         a = node.inputs[0]
         if TYPE_CHECKING:
             a = cast(Tensor, a)
-            out_grad = cast(Tensor, out_grad)
-        return out_grad.reshape(a.shape)
+        return reshape(out_grad, a.shape)
         ### END YOUR SOLUTION
 
 
@@ -258,7 +268,10 @@ class Summation(TensorOp):
 
     def compute(self, a):  # type: ignore
         ### BEGIN YOUR SOLUTION
-        return array_api.sum(a, self.axes, keepdims=self.keepdims)
+        axes = self.axes
+        if axes is not None:
+            axes = tuple(ax if ax >= 0 else ax + len(a.shape) for ax in axes)
+        return array_api.sum(a, axes, keepdims=self.keepdims)
         ### END YOUR SOLUTION
 
     def gradient(self, out_grad, node):
@@ -273,17 +286,9 @@ class Summation(TensorOp):
 
         # 只有当 keepdims=False 时，我们才需要恢复那些被减掉的维度 (变为1)
         if not self.keepdims:
-            if self.axes is None:
-                # 全局 sum,相当于传了所有维度
-                axes = tuple(range(len(in_shape)))
-            else:
-                axes = [ax if ax >= 0 else len(in_shape) + ax for ax in self.axes]
-
-            n_dim = len(in_shape)
-            view_shape = [in_shape[i] if i not in axes else 1  for i in range(n_dim)]
-
-            out_grad = reshape(out_grad, shape=view_shape)
-        return broadcast_to(out_grad, shape=in_shape)
+            return expand_reduced(out_grad, self.axes, in_shape)
+        else:
+            return broadcast_to(out_grad, shape=in_shape)
         ### END YOUR SOLUTION
 
 def summation(a: Value, axes: Optional[Union[int, tuple, Sequence[int]]] = None, keepdims: bool = False) -> Tensor:
@@ -293,13 +298,26 @@ def summation(a: Value, axes: Optional[Union[int, tuple, Sequence[int]]] = None,
 class MatMul(TensorOp):
     def compute(self, a, b):
         ### BEGIN YOUR SOLUTION
-        return a @ b
-        # return array_api.matmul(a,b)
+        # return a @ b # (m,n) (n,p) -> (m, p)
+        return array_api.matmul(a,b)
         ### END YOUR SOLUTION
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        a, b = node.inputs
+        if TYPE_CHECKING:
+            a = cast(Tensor, a)
+            b = cast(Tensor, b)
+        grad_a = matmul(out_grad, b.T)
+        grad_b = matmul(a.T, out_grad) 
+        # 如果b比a维度多,a会先broadcast 成a', grad现在和a'维度相同,需要 降维度(sum的方式)
+        if grad_a.shape!=a.shape:
+            sum_axes = tuple(range(len(grad_a.shape)-len(a.shape)))
+            grad_a = grad_a.sum(axes=sum_axes)
+        if grad_b.shape!=b.shape:
+            sum_axes = tuple(range(len(grad_b.shape)-len(b.shape)))
+            grad_b = grad_b.sum(axes=sum_axes)
+        return grad_a, grad_b
         ### END YOUR SOLUTION
 
 
@@ -349,10 +367,9 @@ class Exp(TensorOp):
         return array_api.exp(a)
         ### END YOUR SOLUTION
 
-    def gradient(self, out_grad, node):
+    def gradient(self, out_grad, node: Tensor):
         ### BEGIN YOUR SOLUTION
-        a = node.inputs[0]
-        return out_grad * exp(a)
+        return out_grad * node
         ### END YOUR SOLUTION
 
 
@@ -390,10 +407,9 @@ class Tanh(TensorOp):
         return array_api.tanh(a)
         ### END YOUR SOLUTION
 
-    def gradient(self, out_grad, node):
+    def gradient(self, out_grad, node: Tensor):
         ### BEGIN YOUR SOLUTION
-        a = node.inputs[0]
-        return out_grad * (1-tanh(a) ** 2)
+        return out_grad * (1- node ** 2)
         ### END YOUR SOLUTION
 
 
@@ -461,7 +477,7 @@ class Split(TensorTupleOp):
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        return stack(out_grad, self.axis)
         ### END YOUR SOLUTION
 
 

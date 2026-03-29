@@ -136,6 +136,22 @@ def test_tanh(shape, device):
 
 @pytest.mark.parametrize("shape", GENERAL_SHAPES)
 @pytest.mark.parametrize("device", _DEVICES, ids=["cpu", "cuda"])
+def test_relu_backward(shape, device):
+    _A = np.random.randn(*shape).astype(np.float32)
+    A = ndl.Tensor(nd.array(_A), device=device)
+    backward_check(ndl.relu, A)
+
+
+@pytest.mark.parametrize("shape", GENERAL_SHAPES)
+@pytest.mark.parametrize("device", _DEVICES, ids=["cpu", "cuda"])
+def test_exp_backward(shape, device):
+    _A = np.random.randn(*shape).astype(np.float32)
+    A = ndl.Tensor(nd.array(_A), device=device)
+    backward_check(ndl.exp, A)
+
+
+@pytest.mark.parametrize("shape", GENERAL_SHAPES)
+@pytest.mark.parametrize("device", _DEVICES, ids=["cpu", "cuda"])
 def test_tanh_backward(shape, device):
     _A = np.random.randn(*shape).astype(np.float32)
     A = ndl.Tensor(nd.array(_A), device=device)
@@ -238,6 +254,37 @@ def test_logsumexp(shape, axes, device):
         t_axes = axes
     np.testing.assert_allclose(torch.logsumexp(A_t, dim=t_axes).numpy(), ndl.logsumexp(A, axes=axes).numpy(), atol=1e-5, rtol=1e-5)
 
+
+
+LOGSOFTMAX_SHAPES = [(1, 5), (3, 4), (2, 3, 5)]
+
+@pytest.mark.parametrize("shape", LOGSOFTMAX_SHAPES)
+@pytest.mark.parametrize("device", _DEVICES, ids=["cpu", "cuda"])
+def test_logsoftmax(shape, device):
+    _A = np.random.randn(*shape).astype(np.float32)
+    A = ndl.Tensor(nd.array(_A), device=device)
+    A_t = torch.Tensor(_A)
+    np.testing.assert_allclose(
+        torch.log_softmax(A_t, dim=-1).numpy(),
+        ndl.logsoftmax(A).numpy(),
+        atol=1e-5, rtol=1e-5,
+    )
+
+
+@pytest.mark.parametrize("shape, axes", SUMMATION_PARAMETERS)
+@pytest.mark.parametrize("device", _DEVICES, ids=["cpu", "cuda"])
+def test_logsumexp_backward(shape, axes, device):
+    _A = np.random.randn(*shape).astype(np.float32)
+    A = ndl.Tensor(nd.array(_A), device=device)
+    backward_check(ndl.logsumexp, A, axes=axes)
+
+
+@pytest.mark.parametrize("shape", LOGSOFTMAX_SHAPES)
+@pytest.mark.parametrize("device", _DEVICES, ids=["cpu", "cuda"])
+def test_logsoftmax_backward(shape, device):
+    _A = np.random.randn(*shape).astype(np.float32)
+    A = ndl.Tensor(nd.array(_A), device=device)
+    backward_check(ndl.logsoftmax, A)
 
 
 ### MUGRADE ###

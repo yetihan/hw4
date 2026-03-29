@@ -3,7 +3,8 @@ from functools import partial
 from gettext import npgettext
 
 import needle
-from .backend_numpy import Device, cpu, all_devices
+from .backend_numpy import Device
+from .backend_selection import cpu, all_devices
 from typing import List, Optional, NamedTuple, Tuple, Union, Dict
 from collections import namedtuple
 import numpy
@@ -14,9 +15,6 @@ from collections import defaultdict
 # needle version
 LAZY_MODE = False
 TENSOR_COUNTER = 0
-
-# NOTE: we will import numpy as the array_api
-# as the backend for our computations, this line will change in later homeworks
 
 from .backend_selection import array_api, NDArray
 
@@ -339,6 +337,10 @@ class Tensor(Value):
             return needle.ops.EWiseDiv()(self, other)
         else:
             return needle.ops.DivScalar(other)(self)
+
+    @property
+    def T(self):
+        return needle.ops.Transpose()(self)
 
     def __matmul__(self, other):
         return needle.ops.MatMul()(self, other)
