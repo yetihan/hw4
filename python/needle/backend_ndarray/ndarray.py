@@ -217,6 +217,7 @@ class NDArray:
             self._handle, self.shape, self.strides, self._offset
         )
 
+    @property
     def is_compact(self) -> bool:
         """Return true if array is compact in memory and internal size equals product
         of the shape dimensions"""
@@ -227,7 +228,7 @@ class NDArray:
 
     def compact(self) -> "NDArray":
         """Convert a matrix to be compact"""
-        if self.is_compact():
+        if self.is_compact:
             return self
         else:
             out = NDArray.make(self.shape, device=self.device)
@@ -631,7 +632,12 @@ class NDArray:
         Note: compact() before returning.
         """
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        stride = list(self.strides)
+        offset = self._offset
+        for ax in axes:
+            offset = offset + stride[ax] * (self.shape[ax]-1)
+            stride[ax] = - stride[ax]
+        return self.make(self.shape, tuple(stride), offset=offset, device=self.device, handle=self._handle).compact()
         ### END YOUR SOLUTION
 
     def pad(self, axes: tuple[tuple[int, int], ...]) -> "NDArray":
@@ -641,7 +647,18 @@ class NDArray:
         axes = ( (0, 0), (1, 1), (0, 0)) pads the middle axis with a 0 on the left and right side.
         """
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        # 用切片赋值,把原始 NDArray放入一个shape 正确的全 0 的较大的 NDArray.
+        shape = []
+        slice_lst = []
+        for idx, lr in enumerate(axes):
+            l,r = lr
+            shape.append(self.shape[idx]+l+r)
+            slice_lst.append(slice(l,l+self.shape[idx]))
+                      
+        res = self.make(tuple(shape), device=self.device)
+        res.fill(0)
+        res[tuple(slice_lst)] = self
+        return res
         ### END YOUR SOLUTION
 
 def array(a: Any, dtype: str = "float32", device: BackendDevice | None = None) -> NDArray:
