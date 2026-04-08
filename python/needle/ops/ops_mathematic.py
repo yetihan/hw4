@@ -186,7 +186,7 @@ class Transpose(TensorOp):
         x, y = self.axes
         axes[x],axes[y] = axes[y], axes[x]
         if TYPE_CHECKING:
-            a = cast(Tensor, a)
+            a = cast(array_api.NDArray, a)
         return a.permute(tuple(axes))
         ### END YOUR SOLUTION
 
@@ -491,12 +491,14 @@ class Flip(TensorOp):
 
     def compute(self, a):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        if TYPE_CHECKING:
+            a = cast(array_api.NDArray, a)
+        return a.flip(self.axes) if self.axes else a
         ### END YOUR SOLUTION
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        return flip(out_grad, self.axes)
         ### END YOUR SOLUTION
 
 
@@ -511,12 +513,26 @@ class Dilate(TensorOp):
 
     def compute(self, a):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        if TYPE_CHECKING:
+            a = cast(array_api.NDArray, a)
+        if self.dilation==0: 
+            return a            
+        new_shape = list(a.shape)
+        slice_lst = [slice(0,x) for x in a.shape]
+        for ax in self.axes:
+            new_shape[ax]+= self.dilation * a.shape[ax]
+            slice_lst[ax] = slice(0,new_shape[ax],1+self.dilation)
+        res = a.make(tuple(new_shape), device=a.device)
+        res.fill(0)
+        res[tuple(slice_lst)]=a
+        return res
         ### END YOUR SOLUTION
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        if TYPE_CHECKING:
+            out_grad = cast(Tensor, out_grad)
+        return undilate(out_grad, self.axes, self.dilation)
         ### END YOUR SOLUTION
 
 
@@ -530,13 +546,26 @@ class UnDilate(TensorOp):
         self.dilation = dilation
 
     def compute(self, a):
+        if TYPE_CHECKING:
+            a = cast(array_api.NDArray, a)
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        # new_shape = list(a.shape)
+        # new_stride = list(a.strides)
+        # for ax in self.axes:
+        #     new_shape[ax] //= (self.dilation+1)
+        #     new_stride[ax] = a.strides[ax] * (self.dilation+1)
+        # return a.as_strided(tuple(new_shape), tuple(new_stride)).compact()
+        slice_lst = [slice(0,x) for x in a.shape]
+        for ax in self.axes:
+            slice_lst[ax] = slice(0,a.shape[ax],1+self.dilation) 
+        return a[tuple(slice_lst)].compact()   
         ### END YOUR SOLUTION
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        if TYPE_CHECKING:
+            out_grad = cast(Tensor, out_grad)
+        return dilate(out_grad, self.axes, self.dilation)        
         ### END YOUR SOLUTION
 
 
@@ -549,18 +578,84 @@ class Conv(TensorOp):
         self.stride = stride
         self.padding = padding
 
-    def compute(self, A, B):
+    def compute(self, Z, F):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        """
+        Z in the NHWC format (C=C_in)
+        F for filter with shape k,k,c_in,c_out
+        p for padding, s for stride
+        return N, (H+2p-k+1)/s, (W+2p-k+1)/s, c_out
+        
+        """
+        if TYPE_CHECKING:
+            Z = cast(array_api.NDArray, Z)
+            F = cast(array_api.NDArray, F)
+        p, s = self.padding, self.stride
+        assert isinstance(p, int)
+        assert isinstance(s, int)
+        
+        # padding
+        if p>0:
+            axes = ((0,0),(p,p),(p,p),(0,0))
+            Z = Z.pad(axes)
+        
+        N, H, W, C = Z.shape
+        N_s, H_s, W_s, C_s = Z.strides
+        k, _, c_in, c_out = F.shape
+        assert C == c_in, "shape mismatch"
+      
+        inner_dim = k*k*c_in
+        # Create 6D view 
+        Z_6D = Z.as_strided(
+            shape=(N, (H-k+1)//s, (W-k+1)//s, k, k, C), 
+            strides=(N_s, H_s*s, W_s*s, H_s, W_s, C_s)
+        )
+        
+        # as_strided 创建的视图不是 compact 的，必须先 compact 再 reshape
+        res_2D = Z_6D.compact().reshape((N*(H-k+1)*(W-k+1)//(s*s), inner_dim)) @ F.compact().reshape((inner_dim, c_out))
+        
+        return res_2D.reshape((N, (H-k+1)//s, (W-k+1)//s, c_out))        
         ### END YOUR SOLUTION
 
     def gradient(self, out_grad, node):
+        """
+        out_grad: (N, (H+2p-k+1)/s, (W+2p-k+1)/s, c_out)
+        """
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        Z, F = node.inputs[:2]
+        if TYPE_CHECKING:
+            out_grad = cast(Tensor, out_grad)
+            Z = cast(Tensor, Z)
+            F = cast(Tensor, F)
+
+        p, s = self.padding, self.stride
+        k = F.shape[0]
+        assert isinstance(p, int)
+        assert isinstance(s, int)
+        
+        if s>1:
+            out_grad_dilated = dilate(out_grad, (1, 2), s - 1)
+        else:
+            out_grad_dilated = out_grad
+                   
+        # dL/dZ = conv(out_grad, F.T)
+        # dL/dF = conv(Z.T, out_grad.permute(0,))
+        
+        F_flip = flip(F, (0,1)).transpose((2,3))
+        dLdZ = conv(out_grad_dilated, F_flip
+                    , stride=1, padding=k-p-1)
+        
+        
+        dLdF = conv(Z.transpose((0,3))
+                    , out_grad_dilated.transpose((0,2)).transpose((0,1))
+                    , stride=1, padding=p
+                    ).transpose((0,2)).transpose((0,1))
+        
+        return dLdZ, dLdF
         ### END YOUR SOLUTION
 
 
-def conv(a, b, stride=1, padding=1):
-    return Conv(stride, padding)(a, b)
+def conv(Z, F, stride=1, padding=1):
+    return Conv(stride, padding)(Z, F)
 
 
