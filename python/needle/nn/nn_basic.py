@@ -70,13 +70,16 @@ class Module:
         for m in self._children():
             m.training = True
 
+    def forward(self, *args, **kwargs) -> Any:
+        raise NotImplementedError()
+
     def __call__(self, *args, **kwargs):
         return self.forward(*args, **kwargs)
 
 
 class Identity(Module):
-    def forward(self, x: Tensor) -> Tensor:
-        return x
+    def forward(self, X: Tensor) -> Tensor:
+        return X
 
 
 class Linear(Module):
@@ -86,26 +89,32 @@ class Linear(Module):
         self.out_features = out_features
 
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        self.weight = Parameter(init.kaiming_normal(in_features, out_features, device=device, dtype=dtype))
+        self.bias = None
+        if bias:
+            self.bias = Parameter(init.kaiming_normal(out_features, 1, device=device, dtype=dtype).transpose())
         ### END YOUR SOLUTION
 
     def forward(self, X: Tensor) -> Tensor:
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        out = ops.matmul(X, self.weight)
+        if self.bias is not None:
+            out = out + ops.broadcast_to(self.bias, out.shape)
+        return out 
         ### END YOUR SOLUTION
 
 
 class Flatten(Module):
     def forward(self, X: Tensor) -> Tensor:
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        return X.reshape((X.shape[0], -1))
         ### END YOUR SOLUTION
 
 
 class ReLU(Module):
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, X: Tensor) -> Tensor:
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        return ops.relu(X)
         ### END YOUR SOLUTION
 
 class Sequential(Module):
@@ -115,14 +124,22 @@ class Sequential(Module):
 
     def forward(self, x: Tensor) -> Tensor:
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        for module in self.modules:
+            x = module(x)
+        return x
         ### END YOUR SOLUTION
 
 
 class SoftmaxLoss(Module):
     def forward(self, logits: Tensor, y: Tensor) -> Tensor:
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        """
+        sum(logsumexp - z_y)/batch_size
+        """
+        batch_size, class_num = logits.shape
+        lse = ops.logsumexp(logits, axes=(1,)) # logsumexp
+        z_y = ops.summation(logits * init.one_hot(class_num, y), axes=1)
+        return ops.summation(lse - z_y)/batch_size 
         ### END YOUR SOLUTION
 
 
@@ -133,12 +150,35 @@ class BatchNorm1d(Module):
         self.eps = eps
         self.momentum = momentum
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        # 初始化为恒等变换
+        self.weight = Parameter(init.ones(1,dim, device=device, dtype=dtype))
+        self.bias = Parameter(init.zeros(1,dim, device=device, dtype=dtype))
+        # 在深度学习框架中，通常习惯将这种非权重参数（Buffer）存储为最简洁的一维形式，使其在查看、保存或手动检查时更加直观。
+        # 也更加符合语义
+        self.running_mean = init.zeros(dim, device=device, dtype=dtype)
+        self.running_var = init.ones(dim, device=device, dtype=dtype)
         ### END YOUR SOLUTION
 
     def forward(self, x: Tensor) -> Tensor:
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        if self.training:
+            batch_size, _ = x.shape
+            mean_batch = ((ops.summation(x, axes=0, keepdims=True))/batch_size) # (1,n)
+            diff = x - mean_batch.broadcast_to(x.shape)
+            var_batch =  ((ops.summation((diff)**2, axes=0, keepdims=True))/batch_size) # (1,n)
+
+            # 核心目的是引入轻微随机性（不同 batch 的统计量略有差异），带来天然的正则化效果，减少过拟合；
+            # 若训练时用 running_mean，会导致归一化分布过于稳定，失去 BN 的部分正则化能力，同时也无法快速适配当前 batch 的局部数据分布。
+            out = diff/(var_batch.broadcast_to(x.shape)+self.eps)**0.5 # （b,n）
+            out = out * self.weight.broadcast_to(x.shape) + self.bias.broadcast_to(x.shape)
+            self.running_mean.data = (1-self.momentum) * self.running_mean.data + self.momentum * mean_batch.data.reshape(self.running_mean.shape)
+            self.running_var.data = (1-self.momentum) * self.running_var.data + self.momentum * var_batch.data.reshape(self.running_var.shape)
+        else:
+            _, n = x.shape
+            view_shape = (1, n)
+            out = (x - self.running_mean.reshape(view_shape).broadcast_to(x.shape))/(self.running_var.reshape(view_shape).broadcast_to(x.shape)+self.eps)**0.5
+            out = out * self.weight.broadcast_to(x.shape) + self.bias.broadcast_to(x.shape)
+        return out
         ### END YOUR SOLUTION
 
 class BatchNorm2d(BatchNorm1d):
@@ -154,17 +194,27 @@ class BatchNorm2d(BatchNorm1d):
 
 
 class LayerNorm1d(Module):
-    def __init__(self, dim: int, eps: float = 1e-5, device: Any | None = None, dtype: str = "float32") -> None:
+    def __init__(self, dim, eps=1e-5, device=None, dtype="float32"):
         super().__init__()
         self.dim = dim
         self.eps = eps
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        # 一开始是恒等变换
+        self.weight = Parameter(init.ones(1, dim, device=device, dtype=dtype)) #  
+        self.bias = Parameter(init.zeros(1, dim, device=device, dtype=dtype))
         ### END YOUR SOLUTION
 
     def forward(self, x: Tensor) -> Tensor:
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        """
+        assume the input to this layer is a 2D tensor, with batches in the first dimension and features in the second
+        x: (b, n)
+        """
+        _, feature_num = x.shape
+        mu = (ops.summation(x, axes=1, keepdims=True)/feature_num).broadcast_to(x.shape) # (b,n)
+        sigma = (((x - mu)**2).sum(axes=1, keepdims=True)/feature_num+self.eps)**0.5  # (b,1)
+        sigma = sigma.broadcast_to(x.shape)
+        return self.weight.broadcast_to(x.shape) * (x-mu)/sigma + self.bias.broadcast_to(x.shape)
         ### END YOUR SOLUTION
 
 
@@ -175,7 +225,13 @@ class Dropout(Module):
 
     def forward(self, x: Tensor) -> Tensor:
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        if not self.training:
+            return x 
+        else:
+            keep_p = 1 - self.p
+            mask = init.randb(*x.shape, p=keep_p)
+            x = (x * mask) / keep_p
+            return x 
         ### END YOUR SOLUTION
 
 
@@ -186,5 +242,5 @@ class Residual(Module):
 
     def forward(self, x: Tensor) -> Tensor:
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        return x + self.fn(x)
         ### END YOUR SOLUTION
