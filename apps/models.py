@@ -8,15 +8,61 @@ np.random.seed(0)
 
 
 class ResNet9(ndl.nn.Module):
+    
+    
+    
     def __init__(self, device=None, dtype="float32"):
         super().__init__()
         ### BEGIN YOUR SOLUTION ###
-        raise NotImplementedError() ###
+
+        def _build_conv_bn(in_channels, out_channels, kernel_size, stride,device=device):
+            conv2d = nn.Conv(in_channels, out_channels, kernel_size, stride, device=device)
+            bn = nn.BatchNorm2d(dim=out_channels, device=device)
+            relu = nn.ReLU()
+            return nn.Sequential(conv2d, bn, relu)   
+        
+        conv_para_lst = [(3,16,7,4),
+                         (16, 32, 3, 2),
+                         (32,32,3,1),
+                         (32,32,3,1),
+                         (32,64,3,2),
+                         (64,128,3,2),
+                         (128,128,3,1),
+                         (128,128,3,1),]
+        tmp=[]
+        for conv_para in conv_para_lst[:2]:
+            tmp.append(_build_conv_bn(*conv_para,device))
+        self.block1 = nn.Sequential(*tmp)
+
+        tmp=[]
+        for conv_para in conv_para_lst[2:4]:
+            tmp.append(_build_conv_bn(*conv_para,device))
+        self.block2 = nn.Sequential(*tmp)
+
+        tmp=[]
+        for conv_para in conv_para_lst[4:6]:
+            tmp.append(_build_conv_bn(*conv_para))
+        self.block3 = nn.Sequential(*tmp)
+        
+        tmp=[]
+        for conv_para in conv_para_lst[6:]:
+            tmp.append(_build_conv_bn(*conv_para))
+        self.block4 = nn.Sequential(*tmp)
+        
+        self.block5= nn.Sequential(nn.Flatten()
+                                   , nn.Linear(128,128, device=device)
+                                   , nn.ReLU()
+                                   , nn.Linear(128,10, device=device))
+        
         ### END YOUR SOLUTION
 
     def forward(self, x):
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        x = self.block1(x)
+        x = x + self.block2(x)
+        x = self.block3(x)
+        x = x + self.block4(x)
+        return self.block5(x)
         ### END YOUR SOLUTION
 
 
