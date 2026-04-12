@@ -206,7 +206,7 @@ class Reshape(TensorOp):
 
     def compute(self, a):
         ### BEGIN YOUR SOLUTION
-        return a.reshape(self.shape)
+        return a.compact().reshape(self.shape)
         ### END YOUR SOLUTION
 
     def gradient(self, out_grad, node):
