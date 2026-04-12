@@ -28,10 +28,31 @@ class Conv(Module):
         self.stride = stride
 
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        fan_in = kernel_size*kernel_size*in_channels
+        fan_out = kernel_size*kernel_size*out_channels
+        conv_filter = init.kaiming_uniform(fan_in, fan_out
+                                          , shape=(kernel_size, kernel_size, in_channels, out_channels)
+                                          , device=device
+                                          , dtype=dtype)
+        self.weight = Parameter(conv_filter)
+        
+        self.bias = None
+        if bias:
+            bias_bound = 1/(in_channels*kernel_size*kernel_size)**0.5
+            self.bias = Parameter(init.rand(out_channels
+                                            , low=-bias_bound
+                                            , high=bias_bound 
+                                            , device=device
+                                            , dtype=dtype))
         ### END YOUR SOLUTION
 
     def forward(self, x: Tensor) -> Tensor:
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        # NCHW-> NHWC
+        x = x.transpose((1,3)).transpose((1,2))
+        res = ops.conv(x, self.weight
+                       , stride=self.stride, padding=self.kernel_size//2)
+        if self.bias:
+            res = res+self.bias.reshape((1,1,1,self.out_channels)).broadcast_to(res.shape) 
+        return res.transpose((1,2)).transpose((1,3))
         ### END YOUR SOLUTION
