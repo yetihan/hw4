@@ -616,15 +616,69 @@ class NDArray:
             )
         return view, out
 
-    def sum(self, axis: int | tuple[int, ...] | list[int] | None = None, keepdims: bool = False) -> "NDArray":
-        view, out = self.reduce_view_out(axis, keepdims=keepdims)
+    def _reduce_op(self, axis: int | tuple[int, ...] | list[int] | None = None
+            , func_str: str = "sum"
+            , keepdims: bool = False) -> "NDArray":
+        axes = axis
+        if isinstance(axis, int):
+            axes = (axes,)
+        out = self
+        if func_str!='sum':
+            func = self.device.reduce_max
+        else:
+            func = self.device.reduce_sum
+        if axes is not None:
+            # 先 reduce 高位轴，这样低位轴的 index 不受影响。
+            for ax in sorted(axes, reverse=True):
+                view, out = out.reduce_view_out(ax, keepdims=keepdims)
+                func(view.compact()._handle, out._handle, view.shape[-1])
+        else:
+            view, out = self.reduce_view_out(axes, keepdims=keepdims)
+            func(view.compact()._handle, out._handle, view.shape[-1])            
+        return out
+    
+    def _sum(self, axis: int | tuple[int, ...] | list[int] | None = None
+            , keepdims: bool = False) -> "NDArray":
+        """
+        在这个自制 backend 里，compact() 的内存拷贝才是性能瓶颈，所以一次性 reduce 不一定快。
+        _sum的优势主要体现在代码结构更清晰——一次 permute + reshape + reduce，逻辑更接近 PyTorch 的思路。
+        性能上在这个框架里差别不大。
+        """
+        if axis is None:
+            view = self.compact().reshape((1,) * (self.ndim - 1) + (prod(self.shape),))
+            out = NDArray.make((1,) * self.ndim if keepdims else (1,), device=self.device)
+            self.device.reduce_sum(view.compact()._handle, out._handle, view.shape[-1])
+            return out
+
+        if isinstance(axis, int):
+            axis = (axis,)
+        axis = tuple(sorted(axis))
+
+        # permute: 保留轴在前，reduce 轴在后
+        keep_axes = [a for a in range(self.ndim) if a not in axis]
+        perm = keep_axes + list(axis)
+        view = self.permute(tuple(perm))
+
+        # reshape: 把 reduce 轴合并成一个
+        keep_shape = tuple(self.shape[a] for a in keep_axes)
+        reduce_size = prod(self.shape[a] for a in axis)
+        view = view.compact().reshape(keep_shape + (reduce_size,))
+
+        # 输出 shape
+        if keepdims:
+            out_shape = tuple(1 if i in axis else s for i, s in enumerate(self.shape))
+        else:
+            out_shape = keep_shape if keep_shape else (1,)
+        out = NDArray.make(out_shape, device=self.device)
+
         self.device.reduce_sum(view.compact()._handle, out._handle, view.shape[-1])
         return out
-
+    
+    def sum(self, axis: int | tuple[int, ...] | list[int] | None = None, keepdims: bool = False) -> "NDArray":
+        return self._reduce_op(axis, "sum", keepdims)
+    
     def max(self, axis: int | tuple[int, ...] | list[int] | None = None, keepdims: bool = False) -> "NDArray":
-        view, out = self.reduce_view_out(axis, keepdims=keepdims)
-        self.device.reduce_max(view.compact()._handle, out._handle, view.shape[-1])
-        return out
+        return self._reduce_op(axis, "max", keepdims)
 
     def flip(self, axes: tuple[int, ...]) -> "NDArray":
         """
