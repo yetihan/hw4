@@ -89,10 +89,10 @@ class Linear(Module):
         self.out_features = out_features
 
         ### BEGIN YOUR SOLUTION
-        self.weight = Parameter(init.kaiming_normal(in_features, out_features, device=device, dtype=dtype))
+        self.weight = Parameter(init.kaiming_uniform(in_features, out_features, device=device, dtype=dtype))
         self.bias = None
         if bias:
-            self.bias = Parameter(init.kaiming_normal(out_features, 1, device=device, dtype=dtype).transpose())
+            self.bias = Parameter(init.kaiming_uniform(out_features, 1, device=device, dtype=dtype).transpose())
         ### END YOUR SOLUTION
 
     def forward(self, X: Tensor) -> Tensor:
@@ -107,7 +107,7 @@ class Linear(Module):
 class Flatten(Module):
     def forward(self, X: Tensor) -> Tensor:
         ### BEGIN YOUR SOLUTION
-        return X.reshape((X.shape[0], -1))
+        return X.reshape((X.shape[0], np.prod(X.shape[1:])))
         ### END YOUR SOLUTION
 
 
@@ -138,7 +138,7 @@ class SoftmaxLoss(Module):
         """
         batch_size, class_num = logits.shape
         lse = ops.logsumexp(logits, axes=(1,)) # logsumexp
-        z_y = ops.summation(logits * init.one_hot(class_num, y), axes=1)
+        z_y = ops.summation(logits * init.one_hot(class_num, y, device=logits.device), axes=1)
         return ops.summation(lse - z_y)/batch_size 
         ### END YOUR SOLUTION
 
