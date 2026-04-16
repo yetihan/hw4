@@ -172,6 +172,10 @@ class TensorTuple(Value):
     def __getitem__(self, index: int):
         return needle.ops.tuple_get_item(self, index)
 
+    def __iter__(self):
+        for i in range(len(self)):
+            yield self[i]
+
     def tuple(self):
         return tuple([x for x in self])
 
