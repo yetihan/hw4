@@ -42,7 +42,7 @@ class DataLoader_yeild:
             at every epoch (default: ``False``).
      """
     dataset: Dataset
-    batch_size: Optional[int]
+    batch_size: int
 
     def __init__(
         self,
@@ -63,10 +63,11 @@ class DataLoader_yeild:
             # self.__init__(self.dataset, self.batch_size, self.shuffle)
             idx_array = np.arange(len(self.dataset)) 
             np.random.shuffle(idx_array)
+            idx_array = idx_array[:len(idx_array) // self.batch_size * self.batch_size]
             self.ordering = idx_array.reshape(-1, self.batch_size)
         for batch_indices in self.ordering:
-            data = self.dataset[batch_indices] # type: ignore
-            yield tuple(Tensor(x) for x in data)
+            data = self.dataset[batch_indices]
+            yield tuple(Tensor(x) for x in data)   # type: ignore
         ### END YOUR SOLUTION
 
     # def __next__(self):
@@ -88,7 +89,7 @@ class DataLoader_next:
             at every epoch (default: ``False``).
      """
     dataset: Dataset
-    batch_size:  Optional[int]
+    batch_size: int
 
     def __init__(
         self,
@@ -109,6 +110,7 @@ class DataLoader_next:
         if self.shuffle:
             idx_array = np.arange(len(self.dataset)) 
             np.random.shuffle(idx_array)
+            idx_array = idx_array[:len(idx_array) // self.batch_size * self.batch_size]
             self.ordering = idx_array.reshape(-1, self.batch_size)
         self.offset = 0
         ### END YOUR SOLUTION
@@ -119,8 +121,8 @@ class DataLoader_next:
         if self.offset < len(self.ordering):
             batch_indices = self.ordering[self.offset]
             self.offset += 1
-            data = self.dataset[batch_indices] # type: ignore
-            return tuple(Tensor(x) for x in data)
+            data = self.dataset[batch_indices] 
+            return tuple(Tensor(x) for x in data)  # type: ignore
         else:
             raise StopIteration
         ## END YOUR SOLUTION

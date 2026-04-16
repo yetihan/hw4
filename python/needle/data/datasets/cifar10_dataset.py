@@ -23,7 +23,7 @@ class CIFAR10Dataset(Dataset):
         """
         ### BEGIN YOUR SOLUTION
         if train:
-            files = [x for x in os.listdir(base_folder) if 'data' in x]
+            files = sorted([x for x in os.listdir(base_folder) if 'data' in x])
         else:
             files = [x for x in os.listdir(base_folder) if 'test' in x]
         assert len(files)>0, f"no data in {base_folder}"
