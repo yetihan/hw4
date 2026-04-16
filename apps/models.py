@@ -31,12 +31,12 @@ class ResNet9(ndl.nn.Module):
                          (128,128,3,1),]
         tmp=[]
         for conv_para in conv_para_lst[:2]:
-            tmp.append(_build_conv_bn(*conv_para,device))
+            tmp.append(_build_conv_bn(*conv_para))
         self.block1 = nn.Sequential(*tmp)
 
         tmp=[]
         for conv_para in conv_para_lst[2:4]:
-            tmp.append(_build_conv_bn(*conv_para,device))
+            tmp.append(_build_conv_bn(*conv_para))
         self.block2 = nn.Sequential(*tmp)
 
         tmp=[]
