@@ -25,7 +25,10 @@ class Dictionary(object):
         Returns the word's unique ID.
         """
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        if word not in self.word2idx:
+            self.word2idx[word]=self.__len__()
+            self.idx2word.append(word)
+        return self.word2idx[word]
         ### END YOUR SOLUTION
 
     def __len__(self):
@@ -33,7 +36,7 @@ class Dictionary(object):
         Returns the number of unique words in the dictionary.
         """
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        return self.idx2word.__len__()
         ### END YOUR SOLUTION
 
 
@@ -60,7 +63,15 @@ class Corpus(object):
         ids: List of ids
         """
         ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
+        id_lst = []        
+        with open(path) as f:
+            for i, line in enumerate(f):
+                if max_lines is not None and i>=max_lines:
+                    break
+                for word in line.split():
+                    id_lst.append(self.dictionary.add_word(word))
+                id_lst.append(self.dictionary.add_word('<eos>'))
+        return id_lst
         ### END YOUR SOLUTION
 
 
@@ -81,7 +92,26 @@ def batchify(data, batch_size, device, dtype):
     Returns the data as a numpy array of shape (nbatch, batch_size).
     """
     ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
+    N = len(data)
+    nbatch = N//batch_size
+    # res = [[] for _ in  range(nbatch)]
+    # 三种等价写法，核心都是把 1D token 序列切成 batch_size 段，每段作为一列
+    #
+    # 写法 1: 双循环显式填充 —— 最直观，但 Python 循环慢
+    #   res[i][j] = data[j*nbatch + i]  → 第 j 列是 data[j*nbatch : (j+1)*nbatch]
+    # res = [[data[j*nbatch+i] for j in range(batch_size)] for i in range(nbatch)]
+    # res = np.array(res, dtype=dtype)
+    #
+    # 写法 2: Fortran-order reshape —— 按列优先填入 (nbatch, batch_size)
+    #   stride_j = nbatch, stride_i = 1，正好对应 data[j*nbatch+i]
+    # res = np.array(data[:nbatch*batch_size], dtype=dtype).reshape(
+    #     (nbatch, batch_size), order='F')
+    #
+    # 写法 3: C-order reshape + 转置 —— 最常见写法（PyTorch 官方示例即此写法）
+    #   先 reshape(batch_size, nbatch)：每行一段连续 token
+    #   再 .T：转成 (nbatch, batch_size)，每列一段连续 token
+    res = np.array(data[:nbatch*batch_size], dtype=dtype).reshape(batch_size, nbatch).T
+    return np.array(res, dtype=dtype)
     ### END YOUR SOLUTION
 
 
@@ -105,5 +135,8 @@ def get_batch(batches, i, bptt, device=None, dtype=None):
     target - Tensor of shape (bptt*bs,) with cached data as NDArray
     """
     ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
+    data = batches[i:i+bptt]
+    target = batches[i+1:i+bptt+1].reshape(np.prod(data.shape))
+    return Tensor(data, device=device, dtype=dtype), Tensor(target, device=device, dtype=dtype),
+    
     ### END YOUR SOLUTION
